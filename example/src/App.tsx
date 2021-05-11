@@ -1,7 +1,7 @@
 import * as React from 'react';
 
 import { StyleSheet, View, Text } from 'react-native';
-import AcuantSdkBridge from 'react-native-acuant-sdk';
+import AcuantSdkBridge from '@jjvaamonde/react-native-acuant-sdk';
 
 export default function App() {
   const [result, setResult] = React.useState("");

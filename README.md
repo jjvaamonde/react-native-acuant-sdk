@@ -5,13 +5,13 @@ React native Acuant brdge
 ## Installation
 
 ```sh
-npm install react-native-acuant-sdk
+npm install @jjvaamonde/react-native-acuant-sdk
 ```
 
 ## Usage
 
 ```js
-import AcuantSdkBridge from "react-native-acuant-sdk";
+import AcuantSdkBridge from "@jjvaamonde/react-native-acuant-sdk";
 
 // ...
 
