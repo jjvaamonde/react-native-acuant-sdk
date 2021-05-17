@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<setting>
+    <acuant_username>dev_admin@DAM</acuant_username>
+    <acuant_password>N??yUcFMd8pc-=</acuant_password>
+    <acuant_subscription>00000000-0000-0000-0000-000000000000</acuant_subscription>
+    <frm_endpoint>https://eu.frm.acuant.net</frm_endpoint>
+    <assureid_endpoint>https://services.assureid.eu</assureid_endpoint>
+    <passive_liveness_endpoint>https://eu.passlive.acuant.net</passive_liveness_endpoint>
+    <acas_endpoint>https://eu.acas.acuant.net</acas_endpoint>
+    <ozone_endpoint>https://eu.ozone.acuant.net</ozone_endpoint>
+</setting>
