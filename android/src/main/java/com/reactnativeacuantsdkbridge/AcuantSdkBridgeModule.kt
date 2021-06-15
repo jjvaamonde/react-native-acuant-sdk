@@ -1,16 +1,17 @@
 package com.reactnativeacuantsdkbridge
 
 import android.app.Activity
-import android.content.DialogInterface
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Environment
+import android.util.Base64
 import android.util.Log
 import com.acuant.acuantcamera.camera.AcuantCameraActivity
 import com.acuant.acuantcamera.constant.ACUANT_EXTRA_IMAGE_URL
 import com.acuant.acuantcamera.constant.ACUANT_EXTRA_PDF417_BARCODE
+import com.acuant.acuantcommon.helper.CredentialHelper
 import com.acuant.acuantcommon.initializer.IAcuantPackageCallback
 import com.acuant.acuantcommon.model.*
 import com.acuant.acuantcommon.type.CardSide
@@ -23,25 +24,23 @@ import com.acuant.acuantfacecapture.FaceCaptureActivity
 import com.acuant.acuantfacematchsdk.AcuantFaceMatch
 import com.acuant.acuantfacematchsdk.model.FacialMatchData
 import com.acuant.acuantfacematchsdk.service.FacialMatchListener
-import com.acuant.acuanthgliveness.model.FaceCapturedImage
 import com.acuant.acuantimagepreparation.AcuantImagePreparation
 import com.acuant.acuantimagepreparation.background.EvaluateImageListener
 import com.acuant.acuantimagepreparation.model.AcuantImage
 import com.acuant.acuantimagepreparation.model.CroppingData
-import com.acuant.acuantpassiveliveness.AcuantPassiveLiveness
-import com.acuant.acuantpassiveliveness.model.PassiveLivenessData
-import com.acuant.acuantpassiveliveness.model.PassiveLivenessResult
-import com.acuant.acuantpassiveliveness.service.PassiveLivenessListener
 import com.facebook.react.bridge.*
 import com.reactnativeacuantsdkbridge.support.*
 import java.io.File
 import java.io.FileOutputStream
-import kotlin.concurrent.thread
+import java.net.HttpURLConnection
+import java.net.URL
 
 
 class AcuantSdkBridgeModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
     var acuantBridge = AcuantBridge()
     var context = reactContext
+    var isFront = true
+    var cont = 0
     override fun getName(): String {
         return "AcuantSdkBridge"
     }
@@ -50,7 +49,7 @@ class AcuantSdkBridgeModule(reactContext: ReactApplicationContext) : ReactContex
     // See https://reactnative.dev/docs/native-modules-android
 
     @ReactMethod
-    fun callAcuant(promise: Promise){
+    fun callAcuant(promise: Promise) {
 
         acuantBridge.initializerAcuant(context, object : IAcuantPackageCallback {
             override fun onInitializeSuccess() {
@@ -66,11 +65,40 @@ class AcuantSdkBridgeModule(reactContext: ReactApplicationContext) : ReactContex
             }
         })
     }
+
     @ReactMethod
-    fun callScanDocumentAcuantCamera(typeDocument: String,retry: Boolean, promise: Promise){
+    fun callScanDocumentAcuantCamera(typeDocument: String, retry: Boolean, promise: Promise) {
         acuantBridge.typeDocumentTouched(typeDocument, context)
         acuantBridge.setRetrying(retry)
-        context.runOnNativeModulesQueueThread{
+        context.runOnNativeModulesQueueThread {
+
+            val mActivityEventListener: ActivityEventListener = object : BaseActivityEventListener() {
+                override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
+                    if (requestCode == Constants.REQUEST_CAMERA_PHOTO && resultCode == AcuantCameraActivity.RESULT_SUCCESS_CODE) {
+                        val url = data?.getStringExtra(ACUANT_EXTRA_IMAGE_URL)
+                        data?.getStringExtra(ACUANT_EXTRA_PDF417_BARCODE)?.let { acuantBridge.setCaptureBarCode(it) }
+                        if (url != null) {
+                            cont += 1
+                            promise.resolve(url)
+                        } else {
+                            promise.resolve("Camera failed to return valid image path")
+
+                        }
+                    } else {
+                        promise.reject(resultCode.toString())
+                    }
+                }
+            }
+            context.addActivityEventListener(mActivityEventListener)
+        }
+    }
+
+    @ReactMethod
+    fun callScanBackDocumentAcuantCamera(retry: Boolean, promise: Promise) {
+        acuantBridge.showDocumentCaptureCamera(context)
+        acuantBridge.setRetrying(retry)
+        isFront = false
+        context.runOnNativeModulesQueueThread {
 
             val mActivityEventListener: ActivityEventListener = object : BaseActivityEventListener() {
                 override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
@@ -83,7 +111,7 @@ class AcuantSdkBridgeModule(reactContext: ReactApplicationContext) : ReactContex
                             promise.resolve("Camera failed to return valid image path")
 
                         }
-                    }else{
+                    } else {
                         promise.reject(resultCode.toString())
                     }
                 }
@@ -91,61 +119,41 @@ class AcuantSdkBridgeModule(reactContext: ReactApplicationContext) : ReactContex
             context.addActivityEventListener(mActivityEventListener)
         }
     }
-    @ReactMethod
-    fun callScanBackDocumentAcuantCamera(retry: Boolean, promise: Promise){
-        acuantBridge.showDocumentCaptureCamera(context)
-        acuantBridge.setRetrying(retry)
-        context.runOnNativeModulesQueueThread{
 
-            val mActivityEventListener: ActivityEventListener = object : BaseActivityEventListener() {
-                override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
-                    if (requestCode == Constants.REQUEST_CAMERA_PHOTO && resultCode == AcuantCameraActivity.RESULT_SUCCESS_CODE) {
-                        val url = data?.getStringExtra(ACUANT_EXTRA_IMAGE_URL)
-                        data?.getStringExtra(ACUANT_EXTRA_PDF417_BARCODE)?.let { acuantBridge.setCaptureBarCode(it) }
-                        if (url != null) {
-                            val map: WritableMap = Arguments.createMap()
-                            val uri: Uri = Uri.fromFile(File(url))
-                            map.putString("imageBack", uri.toString())
-                            promise.resolve(map)
-                        } else {
-                            promise.resolve("Camera failed to return valid image path")
-
-                        }
-                    }else{
-                        promise.reject(resultCode.toString())
-                    }
-                }
-            }
-            context.addActivityEventListener(mActivityEventListener)
-        }
-    }
     @ReactMethod
-    fun processImage(url:String, promise: Promise){
+    fun processImage(url: String, promise: Promise) {
         AcuantImagePreparation.evaluateImage(context, CroppingData(url), object : EvaluateImageListener {
             override fun onSuccess(image: AcuantImage) {
+                var name = ""
+                if(isFront){
+                    name = "front_" + cont.toString()+ ".jpg"
+                }else{
+                    name = "back_"+ cont.toString()+ ".jpg"
+                }
                 try {
-                    val output = FileOutputStream(File(Environment.getExternalStorageDirectory().toString(), "test.png"))
-                    FaceCapturedImage.acuantImage?.image?.compress(Bitmap.CompressFormat.PNG, 100, output)
+                    val output = FileOutputStream(File(context.cacheDir.absolutePath, name ))
+                    image?.image?.compress(Bitmap.CompressFormat.JPEG, 100, output)
                     output.flush()
                     output.close()
 
                 } catch (e: Exception) {
-
                     e.printStackTrace()
                 }
                 val map: WritableMap = Arguments.createMap()
-                val uri: Uri = Uri.fromFile(File(url))
-
+                val uri: Uri = Uri.fromFile(File(context.cacheDir.absolutePath+"/"+name))
+                val bytes64 = File(context.cacheDir.absolutePath+"/"+name).readBytes()
+                val base64 = Base64.encodeToString(bytes64,0)
                 map.putString("image", uri.toString())
-                map.putBoolean("isPassport",image.isPassport)
-                map.putInt("dpi",image.dpi)
-                map.putInt("glare",image.glare)
-                map.putInt("sharpness",image.sharpness)
-                map.putDouble("aspectRadio",image.aspectRatio.toDouble())
-                map.putBoolean("isCorrectAspectRatio",image.isCorrectAspectRatio)
-                map.putString("bytesImage",image.rawBytes.toString())
+                map.putBoolean("isPassport", image.isPassport)
+                map.putInt("dpi", image.dpi)
+                map.putInt("glare", image.glare)
+                map.putInt("shaprness", image.sharpness)
+                map.putDouble("aspectRadio", image.aspectRatio.toDouble())
+                map.putBoolean("isCorrectAspectRatio", image.isCorrectAspectRatio)
+                map.putString("bytesImage", base64)
+
                 promise.resolve(map)
-                acuantBridge.setRecentImage(image)
+                acuantBridge.recentImage = image
 
             }
 
@@ -154,15 +162,16 @@ class AcuantSdkBridgeModule(reactContext: ReactApplicationContext) : ReactContex
             }
         })
     }
+
     // Process Front image
     @ReactMethod
     fun processFrontOfDocument(promise: Promise) {
-        acuantBridge.getRecentImage()?.let { acuantBridge.setcaptureFrontImage(it) }
+        acuantBridge.capturedFrontImage = acuantBridge.recentImage
         val idOptions = IdOptions()
         idOptions.cardSide = CardSide.Front
         idOptions.isHealthCard = false
         idOptions.isRetrying = acuantBridge.getRetrying()
-        val capturedFrontImage = acuantBridge.getCaptureFrontImage()
+        val capturedFrontImage = acuantBridge.capturedFrontImage
         val frontData = if (capturedFrontImage?.rawBytes != null) {
             EvaluatedImageData(capturedFrontImage!!.rawBytes)
         } else {
@@ -170,30 +179,31 @@ class AcuantSdkBridgeModule(reactContext: ReactApplicationContext) : ReactContex
         }
 
         if (acuantBridge.getRetrying()) {
-            uploadFrontImageOfDocument(acuantBridge.getDocumentInstanceId(), frontData as EvaluatedImageData, idOptions,promise)
+            uploadFrontImageOfDocument(acuantBridge.documentInstanceID, frontData as EvaluatedImageData, idOptions, promise)
 
         } else {
-            AcuantDocumentProcessor.createInstance(idOptions, object: CreateInstanceListener {
+            AcuantDocumentProcessor.createInstance(idOptions, object : CreateInstanceListener {
                 override fun instanceCreated(instanceId: String?, error: Error?) {
                     if (error == null) {
                         // Success : Instance Created
                         if (instanceId != null) {
-                            acuantBridge.documentInstanceID= instanceId
+                            acuantBridge.documentInstanceID = instanceId
                         }
-                        uploadFrontImageOfDocument(instanceId!!, frontData as EvaluatedImageData, idOptions,promise)
+                        uploadFrontImageOfDocument(instanceId!!, frontData as EvaluatedImageData, idOptions, promise)
 
                     } else {
                         // Failure
-                            promise.reject(error.errorDescription)
+                        promise.reject(error.errorDescription)
 
                     }
                 }
             })
         }
     }
+
     @ReactMethod
     fun uploadBackImageOfDocument(promise: Promise) {
-        acuantBridge.capturedBackImage = acuantBridge.getRecentImage()
+        acuantBridge.capturedBackImage = acuantBridge.recentImage
         val idOptions = IdOptions()
         idOptions.cardSide = CardSide.Back
         idOptions.isHealthCard = false
@@ -211,14 +221,15 @@ class AcuantSdkBridgeModule(reactContext: ReactApplicationContext) : ReactContex
             override fun imageUploaded(error: Error?, classification: Classification?) {
                 if (error == null) {
                     promise.resolve("SUCCESS")
-                }else{
+                } else {
                     promise.resolve("uncategorized")
                 }
             }
         })
     }
+
     // Upload front Image of Driving License
-    fun uploadFrontImageOfDocument(instanceId: String, frontData: EvaluatedImageData, idOptions: IdOptions,promise: Promise) {
+    fun uploadFrontImageOfDocument(instanceId: String, frontData: EvaluatedImageData, idOptions: IdOptions, promise: Promise) {
         var promise = promise
         acuantBridge.numberOfClassificationAttempts += 1
         // Upload front Image of DL
@@ -228,63 +239,96 @@ class AcuantSdkBridgeModule(reactContext: ReactApplicationContext) : ReactContex
                 if (error == null) {
                     // Successfully uploaded
 
-                   acuantBridge.frontCaptured = true
+                    acuantBridge.frontCaptured = true
                     if (acuantBridge.isBackSideRequired(classification)) {
                         val map: WritableMap = Arguments.createMap()
-                        map.putBoolean("isBackSideRequired",true)
+                        map.putBoolean("isBackSideRequired", true)
                         promise.resolve(map)
 
                     } else {
                         val map: WritableMap = Arguments.createMap()
-                        map.putBoolean("isBackSideRequired",false)
+                        map.putBoolean("isBackSideRequired", false)
                         promise.resolve(map)
                     }
 
                 } else {
                     // Failure
 
-                    promise.resolve("uncategorized")
+                    promise.reject("uncategorized")
                 }
             }
         })
     }
+
     @ReactMethod
     fun getDataFaceImage(promise: Promise) {
-        AcuantDocumentProcessor.getData(acuantBridge.getDocumentInstanceId(),false, object : GetDataListener {
+        AcuantDocumentProcessor.getData(acuantBridge.documentInstanceID, false, object : GetDataListener {
             override fun processingResultReceived(result: ProcessingResult?) {
-                if (result == null || result.error != null) {
+                try {
+                    if (result == null || result.error != null) {
 
-                    promise.resolve(result?.error?.errorDescription ?: ErrorDescriptions.ERROR_DESC_CouldNotGetConnectData)
-                } else if ((result as IDResult).fields == null || result.fields.dataFieldReferences == null) {
+                        promise.reject(result?.error?.errorDescription
+                                ?: ErrorDescriptions.ERROR_DESC_CouldNotGetConnectData)
+                    } else if ((result as IDResult).fields == null || result.fields.dataFieldReferences == null) {
 
-                    promise.resolve("Unknown error happened.\nCould not extract data")
+                        promise.reject("Unknown error happened.\nCould not extract data")
 
-                }
-
-                var faceImageUri: String? = null
-
-                val fieldReferences = (result as IDResult).fields.dataFieldReferences
-                for (reference in fieldReferences) {
-                  if (reference.key == "Photo" && reference.type == "uri") {
-                        faceImageUri = reference.value
                     }
-                }
-                val faceImage =  acuantBridge.loadAssureIDImage(faceImageUri, Credential.get())
 
-                if (faceImage != null) {
-                    val map: WritableMap = Arguments.createMap()
-                    map.putString("faceImageUri",faceImageUri.toString())
-                    acuantBridge.setCaptureFaceImage(faceImage)
-                    promise.resolve(map)
+                    var faceImageUri: String? = null
+
+                    Log.d("result:", result.toString())
+                    val fieldReferences = (result as IDResult).fields.dataFieldReferences
+                    for (reference in fieldReferences) {
+                        Log.d("reference:", reference.toString())
+                        if (reference.key == "Photo" && reference.type == "uri") {
+
+                            faceImageUri = reference.value
+                        }
+                    }
+                    context.runOnNativeModulesQueueThread {
+                        try {
+                            val c = URL(faceImageUri).openConnection() as HttpURLConnection
+                            val auth = CredentialHelper.getAcuantAuthHeader(Credential.get())
+
+                            Log.d("auth:",auth)
+                            c.setRequestProperty("Authorization", auth)
+                            c.useCaches = true
+                            c.connect()
+                            val img = BitmapFactory.decodeStream(c.inputStream)
+                            c.disconnect()
+                            val faceImage = img
+                            faceImage?.let { acuantBridge.setCaptureFaceImage(it) }
+                            if (faceImage != null) {
+                                promise.resolve(true)
+                            }else{
+                                promise.reject("Error face image")
+                            }
+                        }catch (e: java.lang.Exception){
+                            e.printStackTrace()
+                            Log.d("GetDataError:", e.toString())
+                            promise.reject(e.toString())
+                        }
+
+                    }
+
+
+
+                }catch (e:Exception){
+                    e.printStackTrace()
+                    Log.d("GetDataError:", e.toString())
+                    promise.reject(e.toString())
                 }
+
 
             }
         })
     }
+
     @ReactMethod
-    fun callSelfieCam(promise: Promise){
+    fun callSelfieCam(promise: Promise) {
         acuantBridge.showFaceCapture(context)
-        context.runOnNativeModulesQueueThread{
+        context.runOnNativeModulesQueueThread {
 
             val mActivityEventListener: ActivityEventListener = object : BaseActivityEventListener() {
                 override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
@@ -293,19 +337,41 @@ class AcuantSdkBridgeModule(reactContext: ReactApplicationContext) : ReactContex
                         when (resultCode) {
                             FaceCaptureActivity.RESPONSE_SUCCESS_CODE -> {
                                 val url = data?.getStringExtra(FaceCaptureActivity.OUTPUT_URL)
-
                                 if (url == null) {
                                     promise.reject("INVALID OUTPUT")
 
                                 }
-                                val map: WritableMap = Arguments.createMap()
-                                val uri: Uri = Uri.fromFile(File(url))
-                                map.putString("selfieImageUri",uri.toString())
-                                val bytes = url?.let { acuantBridge.readFromFile(it) }
-                                promise.resolve("INVALID OUTPUT")
-                                if (bytes != null) {
-                                    acuantBridge.capturedSelfieImage = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                                try {
+                                    val bitmapFile = File(url)
+                                    var myBitmap = BitmapFactory.decodeFile(url)
+                                    val output = FileOutputStream(File(context.filesDir.absolutePath, "selfie"+cont.toString()+".jpg" ))
+                                    myBitmap.compress(Bitmap.CompressFormat.JPEG, 100, output)
+                                    output.write(bitmapFile.readBytes())
+                                    output.flush()
+                                    output.close()
+                                    val map: WritableMap = Arguments.createMap()
+                                    val uri: Uri = Uri.fromFile(File(context.filesDir.absolutePath+"/"+"selfie"+cont.toString()+".jpg"))
+                                    val temName = context.filesDir.absolutePath+"/"+"selfie"+cont.toString()+".jpg"
+                                    map.putString("selfieImageUri",uri.toString())
+                                    val bytes = acuantBridge.readFromFile(temName)
+                                    promise.resolve(map)
+
+                                    if (bytes != null) {
+                                        acuantBridge.capturedSelfieImage = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                                    }
+                                } catch (e: Exception) {
+
+                                    val map: WritableMap = Arguments.createMap()
+                                    val uri: Uri = Uri.fromFile(File(url))
+                                    map.putString("selfieImageUri",uri.toString())
+                                    val bytes = url?.let { acuantBridge.readFromFile(it) }
+                                    promise.resolve(map)
+
+                                    if (bytes != null) {
+                                        acuantBridge.capturedSelfieImage = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                                    }
                                 }
+
                             }
                             FaceCaptureActivity.RESPONSE_CANCEL_CODE -> {
                                 promise.reject("CANCEL USER")
@@ -321,22 +387,23 @@ class AcuantSdkBridgeModule(reactContext: ReactApplicationContext) : ReactContex
         }
 
     }
+
     @ReactMethod
-    fun facialMacth(promise: Promise){
+    fun facialMacth(promise: Promise) {
         context.runOnNativeModulesQueueThread {
             val facialMatchData = FacialMatchData()
             facialMatchData.faceImageOne = acuantBridge.capturedFaceImage
             facialMatchData.faceImageTwo = acuantBridge.capturedSelfieImage
 
-            if(facialMatchData.faceImageOne != null && facialMatchData.faceImageTwo != null){
+            if (facialMatchData.faceImageOne != null && facialMatchData.faceImageTwo != null) {
 
                 AcuantFaceMatch.processFacialMatch(facialMatchData, FacialMatchListener { result ->
                     context.runOnNativeModulesQueueThread {
                         if (result!!.error == null) {
                             val map: WritableMap = Arguments.createMap()
-                            map.putBoolean("isMatch",result.isMatch)
-                            map.putInt("score",result.score)
-                            map.putString("transactionId",result.transactionId)
+                            map.putBoolean("isMatch", result.isMatch)
+                            map.putInt("score", result.score)
+                            map.putString("transactionId", result.transactionId)
 
                             promise.resolve(map)
                         } else {
@@ -345,11 +412,9 @@ class AcuantSdkBridgeModule(reactContext: ReactApplicationContext) : ReactContex
                     }
 
                 })
-            }
-            else{
+            } else {
                 promise.reject("Face or facial image is null")
             }
         }
     }
-
 }

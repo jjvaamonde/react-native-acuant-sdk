@@ -1,6 +1,6 @@
 {
   "name": "@jjvaamonde/react-native-acuant-sdk",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "React native Acuant bridge",
   "main": "lib/commonjs/index",
   "module": "lib/module/index",
@@ -47,7 +47,7 @@
   },
   "homepage": "https://github.com/jjvaamonde/react-native-acuant-sdk#readme",
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com/jjvaamonde"
+    "registry": "https://registry.npmjs.org/jjvaamonde"
   },
   "devDependencies": {
     "@commitlint/config-conventional": "^11.0.0",

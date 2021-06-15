@@ -57,7 +57,7 @@ class AcuantBridge {
   var processingFacialLiveness = false
   val useTokenInit = true
   private var token = ""
-  private var capturedFrontImage: AcuantImage? = null
+  var capturedFrontImage: AcuantImage? = null
   var capturedBackImage: AcuantImage? = null
   var capturedSelfieImage: Bitmap? = null
   var capturedFaceImage: Bitmap? = null
@@ -75,7 +75,7 @@ class AcuantBridge {
   private var captureWaitTime: Int = 0
   var documentInstanceID: String = ""
   private var autoCaptureEnabled: Boolean = true
-  private var recentImage: AcuantImage? = null
+  var recentImage: AcuantImage? = null
   var typeDocumentCapture = ""
 
   fun cleanUpTransaction() {
@@ -97,11 +97,8 @@ class AcuantBridge {
   }
 
     fun setCaptureFaceImage(bitmap: Bitmap){
-        capturedFaceImage = bitmap
+        this.capturedFaceImage = bitmap
     }
-  fun getDocumentInstanceId() : String {
-    return documentInstanceID
-  }
   fun getRetrying(): Boolean{
     return isRetrying
   }
@@ -120,7 +117,6 @@ class AcuantBridge {
       }
     }
     Credential.initFromXml("acuant.config.xml", context)
-    print(Credential.get())
     try{
       AcuantTokenService(Credential.get(), object : AcuantTokenServiceListener {
         override fun onSuccess(token: String) {
@@ -193,18 +189,8 @@ class AcuantBridge {
   fun setCaptureBarCode(barCode:String){
     capturedBarcodeString = barCode
   }
-  fun setRecentImage(image: AcuantImage) {
-    recentImage = image
-  }
-  fun getRecentImage() : AcuantImage? {
-    return  recentImage
-  }
-  fun setcaptureFrontImage(image: AcuantImage){
-    capturedFrontImage = image
-  }
-  fun getCaptureFrontImage() : AcuantImage? {
-    return  capturedFrontImage
-  }
+
+
     fun getBarCode() : String? {
         return capturedBarcodeString
     }
@@ -223,10 +209,10 @@ class AcuantBridge {
       }
       return isBackSideScanRequired
   }
-  fun loadAssureIDImage(url: String?, credential: Credential?): Bitmap? {
-        if (url != null && credential != null) {
+  fun loadAssureIDImage(url: String?): Bitmap? {
+        if (url != null) {
             val c = URL(url).openConnection() as HttpURLConnection
-            val auth = CredentialHelper.getAcuantAuthHeader(credential)
+            val auth = CredentialHelper.getAcuantAuthHeader(Credential.get())
             c.setRequestProperty("Authorization", auth)
             c.useCaches = false
             c.connect()
@@ -246,7 +232,6 @@ class AcuantBridge {
     } catch (e: Exception){
       e.printStackTrace()
     }
-    file.delete()
     return bytes
   }
 
